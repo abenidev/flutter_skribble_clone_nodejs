@@ -23,11 +23,29 @@ class _PaintScreenState extends State<PaintScreen> {
   Color selectedColor = Colors.black;
   double opacity = 1.0;
   double strokeWidth = 2.0;
+  List<Widget> textBlankWidget = [];
+  final ScrollController _scrollController = ScrollController();
+  List<Map<String, dynamic>> messages = [];
+  late TextEditingController _guessController;
 
   @override
   void initState() {
     super.initState();
+    _guessController = TextEditingController();
     socketIoConnect();
+  }
+
+  @override
+  void dispose() {
+    _guessController.dispose();
+    super.dispose();
+  }
+
+  void renderTextBlank(String text) {
+    textBlankWidget.clear();
+    for (int i = 0; i < text.length; i++) {
+      textBlankWidget.add(const Text('_', style: TextStyle(fontSize: 30)));
+    }
   }
 
   void socketIoConnect() {
@@ -52,7 +70,10 @@ class _PaintScreenState extends State<PaintScreen> {
       //
       _socket.on('update:room', (roomData) {
         debugPrint('update:room | roomData: ${roomData}');
-        setState(() => dataOfRoom = Room.fromMap(roomData));
+        setState(() {
+          dataOfRoom = Room.fromMap(roomData);
+          renderTextBlank(dataOfRoom.word);
+        });
         if (!dataOfRoom.isJoin) {
           //* start the timer
         }
@@ -94,6 +115,16 @@ class _PaintScreenState extends State<PaintScreen> {
       //clean:screen:server
       _socket.on('clean:screen:server', (data) {
         setState(() => points.clear());
+      });
+
+      //guess:server
+      _socket.on('guess:server', (guessData) {
+        setState(() => messages.add(guessData));
+        _scrollController.animateTo(
+          _scrollController.position.maxScrollExtent + 50,
+          duration: const Duration(microseconds: 200),
+          curve: Curves.easeInOut,
+        );
       });
 
       //
@@ -147,99 +178,176 @@ class _PaintScreenState extends State<PaintScreen> {
           children: [
             SizedBox(
               width: size.width,
-              child: Column(
-                crossAxisAlignment: CrossAxisAlignment.center,
-                mainAxisAlignment: MainAxisAlignment.start,
-                children: [
-                  const SizedBox(height: 20),
-                  //*Painter container
-                  Container(
-                    decoration: BoxDecoration(
-                      border: Border.all(color: Colors.grey, width: 2),
-                    ),
-                    width: size.width > paintBoxWidth ? paintBoxWidth : size.width,
-                    height: size.height * 0.55,
-                    child: GestureDetector(
-                      onPanUpdate: (details) {
-                        //*local position is relative to its parent container
-                        //*global position is relative to the device screen
-                        debugPrint(details.localPosition.dx.toString());
-                        _socket.emit('paint', {
-                          'details': {
-                            'dx': details.localPosition.dx,
-                            'dy': details.localPosition.dy,
-                          },
-                          'roomId': dataOfRoom.id,
-                        });
-                      },
-                      onPanStart: (details) {
-                        debugPrint(details.localPosition.dx.toString());
-                        _socket.emit('paint', {
-                          'details': {
-                            'dx': details.localPosition.dx,
-                            'dy': details.localPosition.dy,
-                          },
-                          'roomId': dataOfRoom.id,
-                        });
-                      },
-                      onPanEnd: (details) {
-                        _socket.emit('paint', {
-                          'details': null,
-                          'roomId': dataOfRoom.id,
-                        });
-                      },
-                      child: SizedBox.expand(
-                        child: ClipRRect(
-                          borderRadius: const BorderRadius.all(Radius.circular(20)),
-                          child: RepaintBoundary(
-                            child: CustomPaint(
-                              size: Size.infinite,
-                              painter: MyCustomPainter(pointsList: points),
+              child: SingleChildScrollView(
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.center,
+                  mainAxisAlignment: MainAxisAlignment.start,
+                  children: [
+                    const SizedBox(height: 20),
+                    //*Painter container
+                    Container(
+                      decoration: BoxDecoration(
+                        border: Border.all(color: Colors.grey, width: 2),
+                      ),
+                      width: size.width > paintBoxWidth ? paintBoxWidth : size.width,
+                      height: size.height * 0.55,
+                      child: GestureDetector(
+                        onPanUpdate: (details) {
+                          //*local position is relative to its parent container
+                          //*global position is relative to the device screen
+                          debugPrint(details.localPosition.dx.toString());
+                          _socket.emit('paint', {
+                            'details': {
+                              'dx': details.localPosition.dx,
+                              'dy': details.localPosition.dy,
+                            },
+                            'roomId': dataOfRoom.id,
+                          });
+                        },
+                        onPanStart: (details) {
+                          debugPrint(details.localPosition.dx.toString());
+                          _socket.emit('paint', {
+                            'details': {
+                              'dx': details.localPosition.dx,
+                              'dy': details.localPosition.dy,
+                            },
+                            'roomId': dataOfRoom.id,
+                          });
+                        },
+                        onPanEnd: (details) {
+                          _socket.emit('paint', {
+                            'details': null,
+                            'roomId': dataOfRoom.id,
+                          });
+                        },
+                        child: SizedBox.expand(
+                          child: ClipRRect(
+                            borderRadius: const BorderRadius.all(Radius.circular(20)),
+                            child: RepaintBoundary(
+                              child: CustomPaint(
+                                size: Size.infinite,
+                                painter: MyCustomPainter(pointsList: points),
+                              ),
                             ),
                           ),
                         ),
                       ),
                     ),
-                  ),
 
-                  //stroke width slider
-                  Row(
-                    children: [
-                      IconButton(
-                        icon: Icon(Icons.color_lens, color: selectedColor),
-                        onPressed: () {
-                          selectColor();
-                        },
-                      ),
-                      Expanded(
-                        child: Slider(
-                          min: 1.0,
-                          max: 10,
-                          label: "Strokewidth $strokeWidth",
-                          activeColor: selectedColor,
-                          value: strokeWidth,
-                          onChanged: (double value) {
-                            Map<String, dynamic> map = {
-                              'width': value,
-                              'roomId': dataOfRoom.id,
-                            };
-                            _socket.emit('stroke:width', map);
+                    //stroke width slider
+                    Row(
+                      children: [
+                        IconButton(
+                          icon: Icon(Icons.color_lens, color: selectedColor),
+                          onPressed: () {
+                            selectColor();
                           },
                         ),
-                      ),
-                      IconButton(
-                        icon: Icon(Icons.layers_clear, color: selectedColor),
-                        onPressed: () {
-                          _socket.emit('clean:screen', dataOfRoom.id);
+                        Expanded(
+                          child: Slider(
+                            min: 1.0,
+                            max: 10,
+                            label: "Strokewidth $strokeWidth",
+                            activeColor: selectedColor,
+                            value: strokeWidth,
+                            onChanged: (double value) {
+                              Map<String, dynamic> map = {
+                                'width': value,
+                                'roomId': dataOfRoom.id,
+                              };
+                              _socket.emit('stroke:width', map);
+                            },
+                          ),
+                        ),
+                        IconButton(
+                          icon: Icon(Icons.layers_clear, color: selectedColor),
+                          onPressed: () {
+                            _socket.emit('clean:screen', dataOfRoom.id);
+                          },
+                        ),
+                      ],
+                    ),
+
+                    //
+                    Row(
+                      mainAxisAlignment: MainAxisAlignment.spaceEvenly,
+                      children: textBlankWidget,
+                    ),
+
+                    //guesses display
+                    Container(
+                      decoration: const BoxDecoration(),
+                      height: size.height * 0.28,
+                      child: ListView.builder(
+                        controller: _scrollController,
+                        shrinkWrap: true,
+                        itemCount: messages.length,
+                        itemBuilder: (context, index) {
+                          final msg = messages[index].values;
+                          // {
+                          //   'name': '',
+                          //   'msg': ''
+                          // }
+                          return ListTile(
+                            title: Text(
+                              msg.elementAt(0),
+                              style: const TextStyle(color: Colors.black, fontSize: 19, fontWeight: FontWeight.bold),
+                            ),
+                            subtitle: Text(
+                              msg.elementAt(1),
+                              style: const TextStyle(color: Colors.grey, fontSize: 16),
+                            ),
+                          );
                         },
                       ),
-                    ],
-                  ),
-
-                  //
-                ],
+                    ),
+                  ],
+                ),
               ),
-            )
+            ),
+
+            //guess input field
+            Positioned(
+              bottom: 10,
+              left: 0,
+              right: 0,
+              child: Container(
+                decoration: const BoxDecoration(),
+                margin: const EdgeInsets.symmetric(horizontal: 20),
+                child: TextField(
+                  // readOnly: isTextInputReadOnly,
+                  controller: _guessController,
+                  onSubmitted: (value) {
+                    if (value.trim().isNotEmpty) {
+                      Map<String, dynamic> guessData = {
+                        'username': widget.data['nickname'],
+                        'guess': value.trim(),
+                        'word': dataOfRoom.word,
+                        'roomId': dataOfRoom.id,
+                        // 'guessedUserCtr': guessedUserCtr,
+                        // 'totalTime': 60,
+                        // 'timeTaken': 60 - _start,
+                      };
+                      _socket.emit('guess:client', guessData);
+                      _guessController.clear();
+                    }
+                  },
+                  autocorrect: false,
+                  decoration: InputDecoration(
+                    border: OutlineInputBorder(borderRadius: BorderRadius.circular(8), borderSide: const BorderSide(color: Colors.transparent)),
+                    enabledBorder: OutlineInputBorder(borderRadius: BorderRadius.circular(8), borderSide: const BorderSide(color: Colors.transparent)),
+                    contentPadding: const EdgeInsets.symmetric(horizontal: 16, vertical: 14),
+                    filled: true,
+                    fillColor: const Color(0xffF5F5FA),
+                    hintText: 'Enter Your Guess',
+                    hintStyle: const TextStyle(fontSize: 14, fontWeight: FontWeight.w400),
+                  ),
+                  textInputAction: TextInputAction.done,
+                ),
+              ),
+            ),
+
+            //
           ],
         ),
       ),

@@ -103,10 +103,22 @@ io.on('connection', (socket) => {
 
     //clean:screen
     socket.on('clean:screen', (roomId) => {
-        console.log('clear screen!!');
         io.to(roomId).emit('clean:screen:server', '');
     });
 
+    //guess:client
+    socket.on('guess:client', async (guessData) => {
+        try {
+            io.to(guessData.roomId).emit('guess:server', {
+                username: guessData.username,
+                msg: guessData.guess,
+            });
+        } catch (error) {
+            console.log('error: ', error);
+        }
+    });
+
+    //
 });
 
 //listen
