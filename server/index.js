@@ -1,9 +1,9 @@
 const express = require('express');
 const http = require('http');
 const socket = require('socket.io');
-const { getRoomByName, createRoom, updateRoomIsJoinVal, updateRoomTurn, getRoomById } = require('./controllers/roomController');
+const { getRoomByName, createRoom, updateRoomIsJoinVal, updateRoomTurn, getRoomById, updateRoomCurrentRound, updateRoomTurnIndex, updateRoomWord } = require('./controllers/roomController');
 const getWord = require('./api/getWord');
-const { createPlayer, getPlayersByRoomId } = require('./controllers/playerController');
+const { createPlayer, getPlayersByRoomId, getPlayersBySocketId, updatePlayerPoint } = require('./controllers/playerController');
 const app = express();
 const port = process.env.PORT || 3000;
 let server = http.createServer(app);
@@ -46,7 +46,8 @@ io.on('connection', (socket) => {
             const createdPlayer = await createPlayer(playerInfo);
             console.log('createdPlayer: ', createdPlayer);
             socket.join(createdRoom.id);
-            io.to(createdRoom.id).emit('update:room', createdRoom);
+            const players = await getPlayersByRoomId(createdRoom.id);
+            io.to(createdRoom.id).emit('update:room', { updatedRoom: createdRoom, players });
         } catch (error) {
             console.log('error: ', error);
         }
@@ -75,7 +76,8 @@ io.on('connection', (socket) => {
                 }
                 await updateRoomTurn(foundRoom.id, players[foundRoom.turnIndex].id);
                 const updatedRoom = await getRoomById(foundRoom.id);
-                io.to(updatedRoom.id).emit('update:room', updatedRoom);
+                console.log('players: ', players);
+                io.to(updatedRoom.id).emit('update:room', { updatedRoom, players });
             } else {
                 //?update for spectate mode
                 socket.emit('room:isJoinFalse', 'You are not allowed to join to room!');
@@ -109,16 +111,58 @@ io.on('connection', (socket) => {
     //guess:client
     socket.on('guess:client', async (guessData) => {
         try {
-            io.to(guessData.roomId).emit('guess:server', {
-                username: guessData.username,
-                msg: guessData.guess,
-            });
+            if (guessData.guess == guessData.word) {
+                const foundRoom = await getRoomById(guessData.roomId);
+                const userPlayer = await getPlayersBySocketId(guessData.socketId);
+                if (guessData.timeTaken !== 0) {
+                    let newPoint = userPlayer.points + Math.round((200 / guessData.timeTaken) * 10);
+                    await updatePlayerPoint(userPlayer.id, newPoint);
+                }
+
+                io.to(guessData.roomId).emit('guess:server', {
+                    username: guessData.username,
+                    msg: 'Guessed it!',
+                    guessedUserCtr: guessData.guessedUserCtr + 1,
+                });
+            } else {
+                io.to(guessData.roomId).emit('guess:server', {
+                    username: guessData.username,
+                    msg: guessData.guess,
+                    guessedUserCtr: guessData.guessedUserCtr,
+                });
+            }
+
         } catch (error) {
             console.log('error: ', error);
         }
     });
 
-    //
+    //change turn
+    socket.on('change:turn', async (roomId) => {
+        try {
+            const foundRoom = await getRoomById(roomId);
+            const players = await getPlayersByRoomId(roomId);
+            let turnIndex = foundRoom.turnIndex;
+            if (turnIndex + 1 === players.length) {
+                await updateRoomCurrentRound(roomId, foundRoom.currentRound + 1);
+            }
+
+            if (foundRoom.currentRound <= foundRoom.maxRounds) {
+                const word = getWord();
+                await updateRoomWord(roomId, word);
+                // await updateRoomTurnIndex(roomId, Math.floor(((turnIndex + 1) % players.length)));
+                let turnIndexVal = (turnIndex + 1) % players.length;
+                await updateRoomTurnIndex(roomId, turnIndexVal);
+                await updateRoomTurn(roomId, players[turnIndexVal]);
+                const updatedRoom = await getRoomById(foundRoom.id);
+                io.to(foundRoom.id).emit('change:turn:server', updatedRoom);
+            } else {
+                //show leader board
+            }
+        } catch (error) {
+            console.log('error: ', error);
+        }
+    });
 });
 
 //listen

@@ -40,6 +40,19 @@ const updateRoomTurnIndex = async (roomId, turnIndexVal) => {
     return updatedRoom;
 }
 
+//update currentRound
+const updateRoomCurrentRound = async (roomId, currentRoundVal) => {
+    const updatedRoom = await Room.update({ currentRound: currentRoundVal }, { where: { id: roomId } });
+    return updatedRoom;
+}
+
+//update word
+const updateRoomWord = async (roomId, wordVal) => {
+    const updatedRoom = await Room.update({ word: wordVal }, { where: { id: roomId } });
+    return updatedRoom;
+
+}
+
 module.exports = {
     createRoom,
     getRoomById,
@@ -47,4 +60,6 @@ module.exports = {
     updateRoomTurn,
     updateRoomTurnIndex,
     getRoomByName,
+    updateRoomCurrentRound,
+    updateRoomWord,
 }

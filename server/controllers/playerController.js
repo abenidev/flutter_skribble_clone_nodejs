@@ -28,8 +28,8 @@ const getPlayersById = async (id) => {
 }
 
 //update player point
-const updatePlayerPoint = async (id, prevPoint) => {
-    let player = await Player.update({ points: prevPoint + 1 }, { where: { id } });
+const updatePlayerPoint = async (id, newPoint) => {
+    let player = await Player.update({ points: newPoint }, { where: { id } });
     return player;
 }
 

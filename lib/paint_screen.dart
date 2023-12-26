@@ -1,3 +1,5 @@
+import 'dart:async';
+
 import 'package:flutter/material.dart';
 import 'package:flutter_colorpicker/flutter_colorpicker.dart';
 import 'package:scribble_clone/components/my_custom_painter.dart';
@@ -18,6 +20,7 @@ class PaintScreen extends StatefulWidget {
 class _PaintScreenState extends State<PaintScreen> {
   late io.Socket _socket;
   late Room dataOfRoom;
+  List<dynamic> playersData = [];
   List<TouchPoint> points = [];
   StrokeCap strokeType = StrokeCap.round;
   Color selectedColor = Colors.black;
@@ -27,6 +30,9 @@ class _PaintScreenState extends State<PaintScreen> {
   final ScrollController _scrollController = ScrollController();
   List<Map<String, dynamic>> messages = [];
   late TextEditingController _guessController;
+  int guessedUserCtr = 0;
+  int _start = 60;
+  late Timer _timer;
 
   @override
   void initState() {
@@ -39,6 +45,22 @@ class _PaintScreenState extends State<PaintScreen> {
   void dispose() {
     _guessController.dispose();
     super.dispose();
+  }
+
+  void startTimer() {
+    const oneSec = Duration(seconds: 1);
+    _timer = Timer.periodic(oneSec, (timer) {
+      if (_start == 0) {
+        _socket.emit('change:turn', dataOfRoom.id);
+        setState(() {
+          _timer.cancel();
+        });
+      } else {
+        setState(() {
+          _start--;
+        });
+      }
+    });
   }
 
   void renderTextBlank(String text) {
@@ -68,14 +90,20 @@ class _PaintScreenState extends State<PaintScreen> {
       debugPrint('socket on connect data: ${data}');
 
       //
-      _socket.on('update:room', (roomData) {
+      _socket.on('update:room', (data) {
+        debugPrint('update:room:: data: ${data}');
+        var roomData = data['updatedRoom'];
+        var players = data['players'];
         debugPrint('update:room | roomData: ${roomData}');
         setState(() {
           dataOfRoom = Room.fromMap(roomData);
+          playersData.clear();
+          playersData.addAll(players);
           renderTextBlank(dataOfRoom.word);
         });
         if (!dataOfRoom.isJoin) {
           //* start the timer
+          startTimer();
         }
       });
 
@@ -119,11 +147,44 @@ class _PaintScreenState extends State<PaintScreen> {
 
       //guess:server
       _socket.on('guess:server', (guessData) {
-        setState(() => messages.add(guessData));
+        setState(() {
+          messages.add(guessData);
+          guessedUserCtr = guessData['guessedUserCtr'];
+        });
+        if (guessedUserCtr == playersData.length - 1) {
+          _socket.emit('change:turn', dataOfRoom.id);
+        }
         _scrollController.animateTo(
-          _scrollController.position.maxScrollExtent + 50,
-          duration: const Duration(microseconds: 200),
+          _scrollController.position.maxScrollExtent + 40,
+          duration: const Duration(microseconds: 300),
           curve: Curves.easeInOut,
+        );
+      });
+
+      //change:turn:server
+      _socket.on('change:turn:server', (data) {
+        String oldWord = dataOfRoom.word;
+        showDialog(
+          context: context,
+          builder: (context) {
+            Future.delayed(const Duration(seconds: 3), () {
+              setState(() {
+                dataOfRoom = Room.fromMap(data);
+                renderTextBlank(dataOfRoom.word);
+                guessedUserCtr = 0;
+                _start = 60;
+                points.clear();
+              });
+              Navigator.pop(context);
+              _timer.cancel();
+              //start timer
+              startTimer();
+            });
+
+            return AlertDialog(
+              title: Center(child: Text('Word was ${oldWord}')),
+            );
+          },
         );
       });
 
@@ -173,11 +234,24 @@ class _PaintScreenState extends State<PaintScreen> {
 
     return Scaffold(
       backgroundColor: Colors.white,
+      floatingActionButton: Container(
+        margin: const EdgeInsets.only(bottom: 30),
+        child: FloatingActionButton(
+          onPressed: () {},
+          elevation: 7,
+          backgroundColor: Colors.white,
+          child: Text(
+            '${_start}',
+            style: const TextStyle(color: Colors.black, fontSize: 22),
+          ),
+        ),
+      ),
       body: SafeArea(
         child: Stack(
           children: [
             SizedBox(
               width: size.width,
+              height: size.height,
               child: SingleChildScrollView(
                 child: Column(
                   crossAxisAlignment: CrossAxisAlignment.center,
@@ -277,7 +351,7 @@ class _PaintScreenState extends State<PaintScreen> {
                     //guesses display
                     Container(
                       decoration: const BoxDecoration(),
-                      height: size.height * 0.28,
+                      height: size.height * 0.22,
                       child: ListView.builder(
                         controller: _scrollController,
                         shrinkWrap: true,
@@ -324,9 +398,10 @@ class _PaintScreenState extends State<PaintScreen> {
                         'guess': value.trim(),
                         'word': dataOfRoom.word,
                         'roomId': dataOfRoom.id,
-                        // 'guessedUserCtr': guessedUserCtr,
-                        // 'totalTime': 60,
-                        // 'timeTaken': 60 - _start,
+                        'guessedUserCtr': guessedUserCtr,
+                        'socketId': _socket.id,
+                        'totalTime': 60,
+                        'timeTaken': 60 - _start,
                       };
                       _socket.emit('guess:client', guessData);
                       _guessController.clear();
