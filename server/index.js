@@ -87,8 +87,24 @@ io.on('connection', (socket) => {
 
     //white board sockets
     //paint
-    socket.on('paint', async ({ details, roomId }) => {
+    socket.on('paint', ({ details, roomId }) => {
         io.to(roomId).emit('points', { details });
+    });
+
+    //Color change 
+    socket.on('color:change', ({ color, roomId }) => {
+        io.to(roomId).emit('color:change:server', color);
+    });
+
+    //stroke width
+    socket.on('stroke:width', ({ width, roomId }) => {
+        io.to(roomId).emit('stroke:width:server', width);
+    });
+
+    //clean:screen
+    socket.on('clean:screen', (roomId) => {
+        console.log('clear screen!!');
+        io.to(roomId).emit('clean:screen:server', '');
     });
 
 });

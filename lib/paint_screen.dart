@@ -78,6 +78,25 @@ class _PaintScreenState extends State<PaintScreen> {
           //
         }
       });
+
+      //color:change:server
+      _socket.on('color:change:server', (colorString) {
+        int colVal = int.parse(colorString, radix: 16);
+        Color newColor = Color(colVal);
+        setState(() => selectedColor = newColor);
+      });
+
+      //stroke:width:server
+      _socket.on('stroke:width:server', (width) {
+        setState(() => strokeWidth = width);
+      });
+
+      //clean:screen:server
+      _socket.on('clean:screen:server', (data) {
+        setState(() => points.clear());
+      });
+
+      //
     });
   }
 
@@ -100,12 +119,12 @@ class _PaintScreenState extends State<PaintScreen> {
                 debugPrint("colorString: $colorString");
                 debugPrint("valueString: $valueString");
 
-                Map map = {
+                Map<String, dynamic> colorData = {
                   'color': valueString,
                   'roomId': dataOfRoom.id,
                 };
 
-                _socket.emit('color:change', map);
+                _socket.emit('color:change', colorData);
               },
             ),
           ),
@@ -200,15 +219,18 @@ class _PaintScreenState extends State<PaintScreen> {
                           activeColor: selectedColor,
                           value: strokeWidth,
                           onChanged: (double value) {
-                            // Map map = {'value': value, 'roomName': dataOfRoom['name']};
-                            // _socket.emit('stroke-width', map);
+                            Map<String, dynamic> map = {
+                              'width': value,
+                              'roomId': dataOfRoom.id,
+                            };
+                            _socket.emit('stroke:width', map);
                           },
                         ),
                       ),
                       IconButton(
                         icon: Icon(Icons.layers_clear, color: selectedColor),
                         onPressed: () {
-                          // _socket.emit('clean-screen', dataOfRoom['name']);
+                          _socket.emit('clean:screen', dataOfRoom.id);
                         },
                       ),
                     ],
